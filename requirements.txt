@@ -9,6 +9,8 @@ click==8.1.8
 configobj==5.0.9
 configparser==7.1.0
 distro==1.9.0
+docx2txt==0.8
+et_xmlfile==2.0.0
 etelemetry==0.3.1
 filelock==3.16.1
 fitz==0.0.1.dev2
@@ -37,6 +39,7 @@ nipype==1.9.2
 numpy==2.2.1
 openai==1.59.8
 opencv-python==4.11.0.86
+openpyxl==3.1.5
 packaging==24.2
 pandas==2.2.3
 pathlib==1.0.1
@@ -55,7 +58,9 @@ pyparsing==3.2.1
 PyPDF2==3.0.1
 pytesseract==0.3.13
 python-dateutil==2.9.0.post0
+python-docx==1.1.2
 python-dotenv==1.0.1
+python-pptx==1.0.2
 pytz==2024.2
 pyxnat==1.6.2
 rdflib==6.3.2
@@ -71,3 +76,4 @@ typing_extensions==4.12.2
 tzdata==2024.2
 uritemplate==4.1.1
 urllib3==2.3.0
+XlsxWriter==3.2.0
