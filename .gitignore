@@ -1,0 +1,13 @@
+*.pyc
+*.pyo
+*.pyd
+.Python
+certificates/
+venv/
+env/
+temp
+certificates-raw
+certificates-split
+__pycache__
+.env
+processing-certificates
