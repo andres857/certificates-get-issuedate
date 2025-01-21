@@ -1,16 +1,23 @@
+import pytesseract, time, fitz
 from docx import Document
 from openpyxl import load_workbook
 from pathlib import Path
 from typing import Optional, Dict, Any
-from ia import get_inference_for_pdf_open_ai
+from PIL import Image
+
 from utils import convert_pptx_to_pdf
-from readpdf import get_user_data_by_OCR_METHOD
+# from readpdf import get_user_data_by_OCR_METHOD
+from ia import OpenAIInference, GeminiInferenceForImages
 
 class OfficeDocumentExtractor:
     """
     Una clase unificada para extraer contenido de documentos de Microsoft Office.
     Maneja documentos Word (.docx), Excel (.xlsx) y PowerPoint (.pptx).
     """
+    def __init__(self):
+        self.ia_inference = OpenAIInference()
+        self.ia_inference_for_images = GeminiInferenceForImages()
+
     def extract_docx(self, file_path: str) -> str:
         """
         Extrae el contenido de un archivo Word (.docx).
@@ -58,6 +65,24 @@ class OfficeDocumentExtractor:
 
         return content
 
+    def extract_pdf(self, file_path):
+        file = fitz.open(file_path)
+        for page in file:
+            try:
+                # Convertimos la página a imagen
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                # Realizamos OCR
+                text = pytesseract.image_to_string(img)
+                time.sleep(0.1)
+                # print(text)
+                # user_data = get_inference_for_pdf_open_ai(text)
+                return text
+            except Exception as e:
+                print(f"Error en el procesamiento del pdf usando OCR: {str(e)}")
+                return None
+        file.close()
+    
     def extract_content(self, file_path: str) -> Optional[Any]:
         """
         Método principal que determina el tipo de archivo y llama al método
@@ -69,19 +94,26 @@ class OfficeDocumentExtractor:
             raise FileNotFoundError(f"El archivo {file_path} no existe")
 
         try:
-            if file_path.suffix.lower() == '.docx':
+            if file_path.suffix.lower() == '.pdf':
+                content_doc = self.extract_pdf(str(file_path))
+                content = self.ia_inference.get_inference(content_doc)
+                return content
+            elif file_path.suffix.lower() == '.docx':
                 content_doc = self.extract_docx(str(file_path))
-                print(type(content_doc))
-                content = get_inference_for_pdf_open_ai(content_doc)
+                content = self.ia_inference.get_inference(content_doc)
                 return content
             elif file_path.suffix.lower() == '.xlsx':
                 content_doc = self.extract_xlsx(str(file_path))
-                print(type(content_doc))
-                content = get_inference_for_pdf_open_ai(str(content_doc))
+                content = self.ia_inference.get_inference(str(content_doc))
+                (content_doc)
                 return content
             elif file_path.suffix.lower() == '.pptx':
                 pdf_path = convert_pptx_to_pdf(file_path)
-                content = get_user_data_by_OCR_METHOD(pdf_path)
+                content_pdf = self.extract_pdf(pdf_path)
+                content = self.ia_inference.get_inference(content_pdf)
+                return content
+            elif file_path.suffix.lower() == '.jpg':
+                content = self.ia_inference_for_images.analyze_image(file_path)
                 return content
             else:
                 raise ValueError(f"Formato de archivo no soportado: {file_path.suffix}")
@@ -92,5 +124,5 @@ class OfficeDocumentExtractor:
 
 if __name__ == "__main__":
     extractor = OfficeDocumentExtractor()
-    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificados_formacion_continua.pptx")
+    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificado_reanimacion.jpg")
     print (xlsx_content)
