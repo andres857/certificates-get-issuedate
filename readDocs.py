@@ -114,7 +114,7 @@ class OfficeDocumentExtractor:
                 content = self.ia_inference.get_inference(content_pdf)
                 return content
             elif file_path.suffix.lower() == '.jpg' or file_path.suffix.lower() == '.JPG' or file_path.suffix.lower() == '.jpeg' or file_path.suffix.lower() == '.png' or file_path.suffix.lower() == '.PNG':
-                content = self.ia_inference_for_images.analyze_image(file_path)
+                content = self.ia_inference_for_images.get_inference(file_path)
                 return content
             else:
                 raise ValueError(f"Formato de archivo no soportado: {file_path.suffix}")
@@ -125,5 +125,5 @@ class OfficeDocumentExtractor:
 
 if __name__ == "__main__":
     extractor = OfficeDocumentExtractor()
-    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/122299162_jean_carlo_junior_cardenas_gutierrez_certificado_reanimacion.JPG")
+    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23002896_clarissa_quintana_ramos_certificado_reanimacion.docx")
     print (xlsx_content)
