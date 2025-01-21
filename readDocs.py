@@ -6,7 +6,6 @@ from typing import Optional, Dict, Any
 from PIL import Image
 
 from utils import convert_pptx_to_pdf, convert_doc_to_pdf
-# from readpdf import get_user_data_by_OCR_METHOD
 from ia import OpenAIInference, GeminiInferenceForImages
 
 class OfficeDocumentExtractor:
@@ -98,10 +97,7 @@ class OfficeDocumentExtractor:
                 content_doc = self.extract_pdf(str(file_path))
                 content = self.ia_inference.get_inference(content_doc)
                 return content
-            elif file_path.suffix.lower() == '.docx':
-                # content_doc = self.extract_docx(str(file_path))
-                # content = self.ia_inference.get_inference(content_doc)
-                # return content
+            elif file_path.suffix.lower() == '.docx' or file_path.suffix.lower() == '.doc':
                 pdf_path = convert_doc_to_pdf(file_path)
                 content_pdf = self.extract_pdf(pdf_path)
                 content = self.ia_inference.get_inference(content_pdf)
@@ -117,7 +113,7 @@ class OfficeDocumentExtractor:
                 content_pdf = self.extract_pdf(pdf_path)
                 content = self.ia_inference.get_inference(content_pdf)
                 return content
-            elif file_path.suffix.lower() == '.jpg':
+            elif file_path.suffix.lower() == '.jpg' or file_path.suffix.lower() == '.JPG' or file_path.suffix.lower() == '.jpeg' or file_path.suffix.lower() == '.png' or file_path.suffix.lower() == '.PNG':
                 content = self.ia_inference_for_images.analyze_image(file_path)
                 return content
             else:
@@ -129,5 +125,5 @@ class OfficeDocumentExtractor:
 
 if __name__ == "__main__":
     extractor = OfficeDocumentExtractor()
-    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23002896_clarissa_quintana_ramos_certificado_reanimacion.pdf")
+    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/122299162_jean_carlo_junior_cardenas_gutierrez_certificado_reanimacion.JPG")
     print (xlsx_content)

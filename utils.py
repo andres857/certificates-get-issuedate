@@ -159,7 +159,6 @@ def convert_doc_to_pdf(doc_path: str) -> Path:
         logging.error(f"Error inesperado durante la conversión: {str(e)}")
         raise
 
-# Ejemplo de uso
 if __name__ == "__main__":
     # Puedes especificar aquí la ruta de tu archivo PPTX
     # pptx_file = "/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificados_formacion_continua.pptx"
