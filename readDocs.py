@@ -1,8 +1,10 @@
-from docx import Document  # Para archivos .docx
-from openpyxl import load_workbook  # Para archivos .xlsx
-from pptx import Presentation  # Para archivos .pptx
+from docx import Document
+from openpyxl import load_workbook
 from pathlib import Path
 from typing import Optional, Dict, Any
+from ia import get_inference_for_pdf_open_ai
+from utils import convert_pptx_to_pdf
+from readpdf import get_user_data_by_OCR_METHOD
 
 class OfficeDocumentExtractor:
     """
@@ -56,29 +58,6 @@ class OfficeDocumentExtractor:
 
         return content
 
-    def extract_pptx(self, file_path: str) -> list:
-        """
-        Extrae el contenido de un archivo PowerPoint (.pptx).
-        Devuelve una lista donde cada elemento representa una diapositiva
-        con su contenido textual.
-        """
-        presentation = Presentation(file_path)
-        content = []
-
-        for slide_number, slide in enumerate(presentation.slides, 1):
-            slide_content = []
-            slide_content.append(f"=== Diapositiva {slide_number} ===")
-
-            # Extraemos texto de todas las formas en la diapositiva
-            for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    slide_content.append(shape.text)
-
-            if len(slide_content) > 1:  # Si hay contenido además del número de diapositiva
-                content.append('\n'.join(slide_content))
-
-        return content
-
     def extract_content(self, file_path: str) -> Optional[Any]:
         """
         Método principal que determina el tipo de archivo y llama al método
@@ -91,11 +70,19 @@ class OfficeDocumentExtractor:
 
         try:
             if file_path.suffix.lower() == '.docx':
-                return self.extract_docx(str(file_path))
+                content_doc = self.extract_docx(str(file_path))
+                print(type(content_doc))
+                content = get_inference_for_pdf_open_ai(content_doc)
+                return content
             elif file_path.suffix.lower() == '.xlsx':
-                return self.extract_xlsx(str(file_path))
+                content_doc = self.extract_xlsx(str(file_path))
+                print(type(content_doc))
+                content = get_inference_for_pdf_open_ai(str(content_doc))
+                return content
             elif file_path.suffix.lower() == '.pptx':
-                return self.extract_pptx(str(file_path))
+                pdf_path = convert_pptx_to_pdf(file_path)
+                content = get_user_data_by_OCR_METHOD(pdf_path)
+                return content
             else:
                 raise ValueError(f"Formato de archivo no soportado: {file_path.suffix}")
 
@@ -103,26 +90,7 @@ class OfficeDocumentExtractor:
             print(f"Error al procesar {file_path.name}: {str(e)}")
             return None
 
-# Ejemplo de uso
 if __name__ == "__main__":
     extractor = OfficeDocumentExtractor()
-
-    # Ejemplo con un archivo Word
-    # docx_content = extractor.extract_content("/home/desarrollo/Documents/wc…g-certificates/certificates/1/39175279_diana_marcela_gomez_rave_cargue_plan_de_entrenamiento.xlsx")
-    # if docx_content:
-    #     print("Contenido del documento Word:")
-    #     print(docx_content[:500])  # Mostramos los primeros 500 caracteres
-
-    # Ejemplo con un archivo Excel
-    # xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificados_formacion_continua.pptx")
-    # print (xlsx_content)
-    # if xlsx_content:
-    #     print('hay contenido')
-
-    # Ejemplo con una presentación PowerPoint
-    pptx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificados_formacion_continua.pptx")
-    if pptx_content:
-        print("\nContenido de la presentación PowerPoint:")
-        for slide in pptx_content[:3]:  # Mostramos las primeras 3 diapositivas
-            print(slide)
-            print("-" * 50)
+    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificados_formacion_continua.pptx")
+    print (xlsx_content)

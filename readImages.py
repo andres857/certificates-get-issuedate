@@ -203,7 +203,7 @@ def analyze_image_open_ai(image_path):
         return f"Ocurrió un error: {e}"
     
 if __name__ == "__main__":
-    image_path = "/home/desarrollo/Documents/wc/processing-certificates/certificates/1/91521329_boris_miguel_hernandez_lizarazo_certificado_reanimacion.PNG"
+    image_path = "/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificado_reanimacion.jpg"
 
     result = analyze_image_gemini(image_path)
     print(result)

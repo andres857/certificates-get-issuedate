@@ -1,10 +1,9 @@
 from dotenv import load_dotenv
 import google.generativeai as genai
 from openai import OpenAI
-from typing import Optional, Dict, Any
+from typing import Optional
 import json, os
-from pathlib import Path
-from PIL import Image  
+
 load_dotenv()
 
 class InferenceError(Exception):
@@ -27,9 +26,10 @@ class CertificateInfo:
     def as_dict(self):
         return self.__dict__
     
-prompt="Tu tarea es extraer información específica de certificados de cursos y capacitaciones. Instrucciones: 1. Lee cuidadosamente el texto del certificado proporcionado 2. Identifica el nombre completo de la persona certificada 3. Identifica el número de identificación (puede estar precedido por C.C., Cédula, DNI, etc.)4.Identifica la fecha de emision y si tiene la fecha de vencimiento del certificado 5. Devuelve la información en formato JSON con las siguientes claves: - 'name': nombre completo de la persona - 'identification': número de identificación (solo números, sin prefijos) - 'issue_date': date en formato nodejs - expiration_date: date en formato nodejs, Si algún campo no se encuentra, devuelve null para ese campo. Ejemplo de entrada: CERTIFICA A: JUAN CARLOS PEREZ MARTINEZ C.C. 79845632 Por su asistencia... Ejemplo de salida: { 'nombre': 'JUAN CARLOS PEREZ MARTINEZ', 'identificacion': '79845632', 'issue_date:en formato new Date()', expiration_date: en formato newDate() } El contendo es diverso si no puedes inferir que se certifica con un nombre como CERTIFICA A: JUAN CARLOS PEREZ MARTINEZ devuelve null ya que no todos los nombres son validos ya que pueden ser el nombre de la intitucion o el nombre del certificado o quien firma pero queremos obtener a quien se otorga y si tiene , el nombre quitala A partir de ahora, procesa el siguiente texto y devuelve solo el JSON:"
+api_key = os.getenv('API_OPENAI')
+client_open_ai = OpenAI(api_key=api_key)
 
-prompt_for_images = """Tu tarea es extraer información específica de certificados escaneados, siendo especialmente flexible con variaciones en el texto debido a OCR.
+prompt = """Tu tarea es extraer información específica de certificados escaneados, siendo especialmente flexible con variaciones en el texto debido a OCR.
 
 INSTRUCCIONES DE EXTRACCIÓN:
 
@@ -61,7 +61,12 @@ INSTRUCCIONES DE EXTRACCIÓN:
 4. FECHA DE VENCIMIENTO:
 - Busca términos como: 'válido hasta', 'vigencia', 'vence', 'expira'
 - Usa el mismo procesamiento flexible que para la fecha de emisión
-- Si no se encuentra, devuelve null
+- Si encuentras una vigencia expresada en años (ej: "Vigencia: 3 años", "vigencia 2 años"):
+  * Calcula la fecha de vencimiento sumando los años a la fecha de emisión
+  * Si la vigencia está en meses, suma los meses correspondientes
+  * Si la vigencia está en días, suma los días correspondientes
+- En caso de certificados con "Fecha Inicio" y "Vigencia X años", usa la fecha de inicio como base
+- Si no se encuentra fecha explícita ni vigencia para calcular, devuelve null
 
 FORMATO DE SALIDA:
 {
@@ -86,10 +91,6 @@ IMPORTANTE:
 - Busca patrones aproximados cuando el texto esté distorsionado
 - Prioriza la extracción de fechas en formato completo (día, mes y año)
 - Solo devuelve el JSON, sin explicaciones adicionales"""
-
-api_key = os.getenv('API_OPENAI')
-
-client_open_ai = OpenAI(api_key=api_key)
 
 def parse_inference_response(response_text: str) -> dict:
     try:
@@ -123,13 +124,13 @@ def parse_inference_response(response_text: str) -> dict:
     except Exception as e:
         raise ResponseParsingError(f"Error inesperado al procesar la respuesta: {str(e)}")
     
-def get_inference_for_pdf_open_ai(content_certificate, prompt_system):
+def get_inference_for_pdf_open_ai(content_certificate):
     try:
         completion = client_open_ai.chat.completions.create(
             model="gpt-3.5-turbo",
             store=True,
             messages=[
-                {"role": "system", "content": prompt_system},
+                {"role": "system", "content": prompt},
                 {"role": "user", "content": content_certificate}
             ],
             temperature=0.3
@@ -140,7 +141,7 @@ def get_inference_for_pdf_open_ai(content_certificate, prompt_system):
             raise Exception("La API no devolvió ninguna respuesta")
             
         certificate_info = parse_inference_response(response_text)
-        print(f"Información extraída: {certificate_info}")
+        # print(f"Información extraída: {certificate_info}")
         return certificate_info
     except Exception as e:
         print(f"Error inesperado en la API de OpenAI: {str(e)}")
