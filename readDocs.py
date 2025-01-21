@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from PIL import Image
 
-from utils import convert_pptx_to_pdf
+from utils import convert_pptx_to_pdf, convert_doc_to_pdf
 # from readpdf import get_user_data_by_OCR_METHOD
 from ia import OpenAIInference, GeminiInferenceForImages
 
@@ -99,9 +99,14 @@ class OfficeDocumentExtractor:
                 content = self.ia_inference.get_inference(content_doc)
                 return content
             elif file_path.suffix.lower() == '.docx':
-                content_doc = self.extract_docx(str(file_path))
-                content = self.ia_inference.get_inference(content_doc)
+                # content_doc = self.extract_docx(str(file_path))
+                # content = self.ia_inference.get_inference(content_doc)
+                # return content
+                pdf_path = convert_doc_to_pdf(file_path)
+                content_pdf = self.extract_pdf(pdf_path)
+                content = self.ia_inference.get_inference(content_pdf)
                 return content
+
             elif file_path.suffix.lower() == '.xlsx':
                 content_doc = self.extract_xlsx(str(file_path))
                 content = self.ia_inference.get_inference(str(content_doc))
@@ -124,5 +129,5 @@ class OfficeDocumentExtractor:
 
 if __name__ == "__main__":
     extractor = OfficeDocumentExtractor()
-    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificado_reanimacion.jpg")
+    xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23002896_clarissa_quintana_ramos_certificado_reanimacion.pdf")
     print (xlsx_content)
