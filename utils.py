@@ -1,6 +1,6 @@
 import subprocess
 from pathlib import Path
-import logging
+import logging, os
 
 def convert_pptx_to_pdf(pptx_path: str) -> Path:
     """
@@ -159,6 +159,90 @@ def convert_doc_to_pdf(doc_path: str) -> Path:
         logging.error(f"Error inesperado durante la conversión: {str(e)}")
         raise
 
+
+def extraer_id_archivo(nombre_archivo: str) -> str | None:
+    """
+    Extrae el ID numérico del nombre de un archivo, buscando los números
+    que aparecen antes del primer guion bajo (_).
+    
+    Args:
+        nombre_archivo: Ruta o nombre del archivo del cual extraer el ID
+        
+    Returns:
+        str: El ID numérico si se encuentra
+        None: Si no se encuentra un ID válido
+    
+    Ejemplos:
+        >>> extraer_id_archivo("23496192_luz_marina_bustos_rodriguez.pptx")
+        "23496192"
+        >>> extraer_id_archivo("documento_sin_id.pdf")
+        None
+    """
+    # Obtenemos solo el nombre del archivo sin la ruta completa
+    nombre_base = os.path.basename(nombre_archivo)
+    
+    # Buscamos la posición del primer guion bajo
+    posicion_guion = nombre_base.find('_')
+    
+    # Si no hay guion bajo o está al inicio, no hay ID válido
+    if posicion_guion <= 0:
+        return None
+        
+    # Extraemos la parte antes del primer guion bajo
+    posible_id = nombre_base[:posicion_guion]
+    
+    # Verificamos si lo que obtuvimos es un número
+    if posible_id.isdigit():
+        return posible_id
+    
+    return None
+
+def renombrar_archivo_con_fechas(ruta_original: str, issue_date: str, expiration_date: str | None = None) -> None:
+    """
+    Renombra un archivo agregando las fechas al final, considerando que la fecha de expiración es opcional.
+    
+    Args:
+        ruta_original: Ruta completa del archivo
+        issue_date: Fecha de emisión en formato ISO
+        expiration_date: Fecha de expiración en formato ISO (opcional)
+    
+    Por ejemplo:
+    Con fecha de expiración:
+        De: 52030365_maria_cristina_cardenas.pdf 
+        A:  52030365_maria_cristina_cardenas_issueddate2018-07-28_expirationdate2018-07-28.pdf
+    Sin fecha de expiración:
+        A:  52030365_maria_cristina_cardenas_issueddate2018-07-28.pdf
+    """
+    directorio = os.path.dirname(ruta_original)
+    nombre_original = os.path.basename(ruta_original)
+    nombre_sin_extension, extension = os.path.splitext(nombre_original)
+    
+    # Convertimos la fecha de emisión de ISO a YYYY-MM-DD
+    fecha_emision = issue_date.split('T')[0]
+    
+    # Construimos el nuevo nombre empezando con la fecha de emisión
+    nuevo_nombre = f"{nombre_sin_extension}_issueddate{fecha_emision}"
+    
+    # Agregamos la fecha de expiración solo si está presente
+    if expiration_date:
+        fecha_expiracion = expiration_date.split('T')[0]
+        nuevo_nombre += f"_expirationdate{fecha_expiracion}"
+    
+    # Agregamos la extensión al final
+    nuevo_nombre += extension
+    
+    # Creamos la ruta completa nueva
+    nueva_ruta = os.path.join(directorio, nuevo_nombre)
+    
+    try:
+        os.rename(ruta_original, nueva_ruta)
+        print(f"Archivo renombrado correctamente:")
+        print(f"De: {nombre_original}")
+        print(f"A:  {nuevo_nombre}")
+    except Exception as e:
+        print(f"Error al renombrar el archivo: {str(e)}")
+
+
 if __name__ == "__main__":
     # Puedes especificar aquí la ruta de tu archivo PPTX
     # pptx_file = "/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificados_formacion_continua.pptx"
@@ -169,10 +253,14 @@ if __name__ == "__main__":
     # except Exception as e:
     #     print(f"Error: {str(e)}")
 
-    doc_file = "/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23002896_clarissa_quintana_ramos_certificado_reanimacion.docx"
+    # doc_file = "/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23002896_clarissa_quintana_ramos_certificado_reanimacion.docx"
     
-    try:
-        pdf_file = convert_doc_to_pdf(doc_file)
-        print(f"PDF generado exitosamente en: {pdf_file}")
-    except Exception as e:
-        print(f"Error durante la conversión: {str(e)}")
+    # try:
+    #     pdf_file = convert_doc_to_pdf(doc_file)
+    #     print(f"PDF generado exitosamente en: {pdf_file}")
+    # except Exception as e:
+    #     print(f"Error durante la conversión: {str(e)}")
+
+    # id1 = extraer_id_archivo("23496192_luz_marina_bustos_rodriguez.pptx")
+    # print(type(id1))
+    pass

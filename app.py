@@ -1,11 +1,18 @@
 import os
-from PyPDF2 import PdfReader
 import logging
+from enum import Enum
+from readDocs import OfficeDocumentExtractor
+from utils import extraer_id_archivo, renombrar_archivo_con_fechas
+from excel import create_excel_template, insert_certificate_data
 
-# Configurar logging para ignorar warnings
-logging.getLogger('PyPDF2').setLevel(logging.ERROR)
+# Enum simple para las extensiones prohibidas
+class ArchivoProhibido(Enum):
+    INI = '.ini'
+    EXE = '.exe'
+    HTML = '.html'
 
 def leer_todos_certificates():
+    extractor = OfficeDocumentExtractor()
     directorio_actual = os.path.dirname(os.path.abspath(__file__))
     carpeta_certificates = os.path.join(directorio_actual, 'certificates')
     
@@ -13,29 +20,37 @@ def leer_todos_certificates():
         print(f"El directorio {carpeta_certificates} no existe")
         return
     
-    # Recorrer todas las subcarpetas
+    extensiones_prohibidas = {ext.value for ext in ArchivoProhibido}
+    
     for raiz, dirs, archivos in os.walk(carpeta_certificates):
-        certificates = [archivo for archivo in archivos]
-        
-        if certificates:
-            # Mostrar en qué carpeta estamos
-            # print(f"\n Leyendo certificates en: {certificates}"
-            
-            for certificate in certificates:
-                ruta_completa = os.path.join(raiz, certificate)
-                try:
-                    with open(ruta_completa, 'rb') as archivo_pdf:
-                        lector = PdfReader(archivo_pdf, strict=False)
-                        num_paginas = len(lector.pages)
-                        
-                        # print(f"\nArchivo: {certificate}")
-                        # print(f"Número de páginas: {num_paginas}")
-                        
-                        if (num_paginas == 1):
-                            print('leer certificate')
-                            
-                except Exception as e:
-                    print(f"Error al leer el archivo {certificate}: {str(e)}")
+        # Obtenemos el nombre de la carpeta actual
+        nombre_carpeta = os.path.basename(raiz)
+        path_folder = os.path.join(raiz)
 
+        path_report = create_excel_template(path_folder)
+        
+        archivos_permitidos = [
+            archivo for archivo in archivos 
+            if os.path.splitext(archivo)[1].lower() not in extensiones_prohibidas
+        ]
+        
+        print(f"\nLeyendo archivos en carpeta: {nombre_carpeta}")
+        
+        for archivo in archivos_permitidos:
+            path_file = os.path.join(raiz, archivo)
+            inference_response = extractor.extract_content(path_file)
+            issue_date = inference_response.get('issue_date')
+            expiration_date = inference_response.get('expiration_date')
+            # Llamamos a la función con las fechas correspondientes
+            if issue_date:
+                renombrar_archivo_con_fechas(
+                    ruta_original=path_file,
+                    issue_date=issue_date,
+                    expiration_date=expiration_date
+                )
+            else:
+                inference_response['name'] = archivo
+                insert_certificate_data(path_report, inference_response)
+                
 if __name__ == "__main__":
     leer_todos_certificates()

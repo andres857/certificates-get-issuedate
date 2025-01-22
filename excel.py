@@ -3,7 +3,7 @@ from openpyxl.styles import Font, PatternFill
 from pathlib import Path
 import logging
 
-def create_excel_template(name_report: str, current_path: str) -> Path:
+def create_excel_template(current_path: str, name_report: str = "report") -> Path:
     """
     Crea un archivo Excel con una estructura predefinida para almacenar información de certificados,
     solo si el archivo no existe previamente en la ruta especificada.
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     
     try:
         # Creamos el archivo Excel
-        excel_file = create_excel_template('desca1', current_path)
+        excel_file = create_excel_template(current_path)
         
         # Datos de prueba
         test_data = {
