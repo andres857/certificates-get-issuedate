@@ -98,21 +98,32 @@ class OfficeDocumentExtractor:
                 content = self.ia_inference.get_inference(content_doc)
                 return content
             elif file_path.suffix.lower() == '.docx' or file_path.suffix.lower() == '.doc':
-                pdf_path = convert_doc_to_pdf(file_path)
-                content_pdf = self.extract_pdf(pdf_path)
-                content = self.ia_inference.get_inference(content_pdf)
-                return content
-
+                try:
+                    pdf_path = convert_doc_to_pdf(file_path)
+                    content_pdf = self.extract_pdf(pdf_path)
+                    content = self.ia_inference.get_inference(content_pdf)
+                except Exception as e:
+                    print(f"Error procesando el PDF: {e}")
+                    raise
+                else:
+                    pdf_path.unlink()
+                    return content                   
             elif file_path.suffix.lower() == '.xlsx':
                 content_doc = self.extract_xlsx(str(file_path))
                 content = self.ia_inference.get_inference(str(content_doc))
-                (content_doc)
                 return content
             elif file_path.suffix.lower() == '.pptx':
-                pdf_path = convert_pptx_to_pdf(file_path)
-                content_pdf = self.extract_pdf(pdf_path)
-                content = self.ia_inference.get_inference(content_pdf)
-                return content
+                try:
+                    pdf_path = convert_pptx_to_pdf(file_path)
+                    content_pdf = self.extract_pdf(pdf_path)
+                    content = self.ia_inference.get_inference(content_pdf)
+                except Exception as e:
+                    print(f"Error procesando el PDF: {e}")
+                    raise
+                else:
+                    pdf_path.unlink()
+                    return content
+
             elif file_path.suffix.lower() == '.jpg' or file_path.suffix.lower() == '.JPG' or file_path.suffix.lower() == '.jpeg' or file_path.suffix.lower() == '.png' or file_path.suffix.lower() == '.PNG':
                 content = self.ia_inference_for_images.get_inference(file_path)
                 return content
