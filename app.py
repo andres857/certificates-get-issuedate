@@ -38,18 +38,22 @@ def leer_todos_certificates():
         
         for archivo in archivos_permitidos:
             path_file = os.path.join(raiz, archivo)
-            inference_response = extractor.extract_content(path_file)
-            issue_date = inference_response.get('issue_date')
-            expiration_date = inference_response.get('expiration_date')
-            # Llamamos a la función con las fechas correspondientes
-            if issue_date:
-                renombrar_archivo_con_fechas(
-                    ruta_original=path_file,
-                    issue_date=issue_date,
-                    expiration_date=expiration_date
-                )
-            else:
-                inference_response['name'] = archivo
+            try:
+                inference_response = extractor.extract_content(path_file)
+                issue_date = inference_response.get('issue_date')
+                expiration_date = inference_response.get('expiration_date')
+                # Llamamos a la función con las fechas correspondientes
+                if issue_date:
+                    renombrar_archivo_con_fechas(
+                        ruta_original=path_file,
+                        issue_date=issue_date,
+                        expiration_date=expiration_date
+                    )
+                else:
+                    inference_response['name'] = archivo
+                    insert_certificate_data(path_report, inference_response)
+            except Exception as e:
+                inference_response['message_error'] = e
                 insert_certificate_data(path_report, inference_response)
                 
 if __name__ == "__main__":

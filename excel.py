@@ -47,7 +47,8 @@ def create_excel_template(current_path: str, name_report: str = "report") -> Pat
             "Identificación",
             "Nombre",
             "Fecha de Emisión",
-            "Fecha de Expiración"
+            "Fecha de Expiración",
+            "error_message"
         ]
         
         # Aplicamos los encabezados y el formato
@@ -106,7 +107,8 @@ def insert_certificate_data(excel_path: Path, data: dict) -> None:
             ws.cell(row=last_row, column=2, value=data.get('name', ''))
             ws.cell(row=last_row, column=3, value=data.get('issue_date', ''))
             ws.cell(row=last_row, column=4, value=data.get('expiration_date', ''))
-            
+            ws.cell(row=last_row, column=5, value=data.get('error_message', ''))
+
             # Guardamos los cambios
             wb.save(str(excel_path))
             logging.info(f"Datos insertados exitosamente en {excel_path}")

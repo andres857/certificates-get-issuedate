@@ -95,7 +95,8 @@ class OfficeDocumentExtractor:
         try:
             if file_path.suffix.lower() == '.pdf':
                 content_doc = self.extract_pdf(str(file_path))
-                content = self.ia_inference.get_inference(content_doc)
+                print('AAAAAAAAAAAAA',file_path)
+                content = self.ia_inference.get_inference(content_doc, file_path)
                 return content
             elif file_path.suffix.lower() == '.docx' or file_path.suffix.lower() == '.doc':
                 try:
@@ -131,8 +132,7 @@ class OfficeDocumentExtractor:
                 raise ValueError(f"Formato de archivo no soportado: {file_path.suffix}")
 
         except Exception as e:
-            print(f"Error al procesar {file_path.name}: {str(e)}")
-            return None
+            raise
 
 if __name__ == "__main__":
     extractor = OfficeDocumentExtractor()

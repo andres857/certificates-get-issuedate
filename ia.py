@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 from dotenv import load_dotenv
 import google.generativeai as genai
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, APIConnectionError, Timeout, OpenAIError
 from typing import Optional
 import json, os
 from PIL import Image
-
+import anthropic
+import base64
 
 load_dotenv()
 
@@ -126,7 +127,8 @@ class BaseInference(ABC):
                 'name': data.get('name'),
                 'identification': data.get('identification'),
                 'issue_date': data.get('issue_date'),
-                'expiration_date': data.get('expiration_date')
+                'expiration_date': data.get('expiration_date'),
+                'message_error': None
             }
         
         except json.JSONDecodeError as e:
@@ -143,7 +145,6 @@ class BaseInference(ABC):
         Define la interfaz común para obtener inferencias de cualquier modelo.
         """
         pass
-
 
 class CertificateInfo:
     """Clase para almacenar la información extraída del certificado"""
@@ -163,8 +164,9 @@ class OpenAIInference(BaseInference):
         super().__init__()
         self.api_key = os.getenv('API_OPENAI')
         self.client = OpenAI(api_key=self.api_key)
-        
-    def get_inference(self, content_certificate):
+        self.claude_fallback = AntropicInferenceForPDF()
+
+    def get_inference(self, content_certificate, path_pdf=None):
         try:
             completion = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -181,12 +183,33 @@ class OpenAIInference(BaseInference):
                 raise Exception("La API no devolvió ninguna respuesta")
                 
             certificate_info = self.parse_response(response_text)
+            print('EVALUANDOOOOOOOOOOOOOO',certificate_info)
+            if certificate_info['issue_date'] is None:
+                print('Procesado con IAAAAAAAAA CLAUDE')
+                certificate_info = self.claude_fallback.get_inference(path_pdf)
+            else:
+                print('Procesadooooooooooooooo con OpenAI')
+
             # print(f"Información extraída: {certificate_info}")
             return certificate_info
+        
+        except RateLimitError as e:
+            print(f"Límite de solicitudes alcanzado: {str(e)}")
+            # Tal vez podrías pausar la ejecución aquí y esperar un rato antes de reintentar
+            raise
+        except APIConnectionError as e:
+            print(f"Problema de conexión con la API: {str(e)}")
+            raise
+        except Timeout as e:
+            print(f"Se alcanzó el tiempo de espera al conectar con la API: {str(e)}")
+            raise
+        except OpenAIError as e:
+            print(f"Error general en la API de OpenAI: {str(e)}")
+            raise
         except Exception as e:
-            print(f"Error inesperado en la API de OpenAI: {str(e)}")
-            return None
-    
+            print(f"Error inesperado: {str(e)}")
+            raise
+
 class GeminiInferenceForImages(BaseInference):
     def __init__(self):
         super().__init__()
@@ -221,6 +244,75 @@ class GeminiInferenceForImages(BaseInference):
         except Exception as e:
             return f"Ocurrió un error: {e}"
 
+class AntropicInferenceForPDF(BaseInference):
+    def __init__(self):
+        super().__init__()
+        self.api_key = os.getenv('ANTHROPIC_API_KEY')
+        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.model = "claude-3-5-sonnet-20241022"
+        # claude-3-5-sonnet-20240620
+        # "claude-3-5-sonnet-20241022"
+
+    def read_pdf(self, path_pdf):
+        try:
+            with open(path_pdf, "rb") as f:
+                pdf_data = base64.b64encode(f.read()).decode("utf-8")
+            return pdf_data
+        except FileNotFoundError:
+            raise InferenceError("El archivo PDF no se encontró en la ruta especificada")
+    
+    def get_inference(self, path_pdf):
+        try:
+            content_pdf = self.read_pdf(path_pdf)
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "document",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "application/pdf",
+                                    "data": content_pdf
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": self.prompt
+                            }
+                        ]
+                    }
+                ]
+            )
+            text_response = message.content[0]
+            response_dict = json.loads(text_response.text)
+            response_dict['message_error'] = None
+            print(response_dict)
+            return response_dict
+
+        except anthropic.APIError as e:
+            error_message = f"Error en la API de Anthropic: {str(e)}"
+            print(error_message)
+            raise InferenceError(error_message)
+
+        except anthropic.APIConnectionError as e:
+            error_message = f"Error de conexión con la API de Anthropic: {str(e)}"
+            print(error_message)
+            raise InferenceError(error_message)
+
+        except anthropic.RateLimitError as e:
+            error_message = f"Se ha excedido el límite de solicitudes a la API: {str(e)}"
+            print(error_message)
+            raise InferenceError(error_message)
+
+        except Exception as e:
+            error_message = f"Error inesperado: {str(e)}"
+            print(error_message)
+            raise InferenceError(error_message)
+        
 if __name__ == "__main__":
     content_pdf="Texto extraído por OCR:EN ] 0 (aa. ! 'FUNDACIÓN:CARDIOINFANTIL:- INSTITUTO DE'CARDIOLOGIA: : *CENTRO' DE SIMULACIÓN Y. HABILIDADES'CLINICAS “VALENTÍN FUSTER” ¿CERTIEICAYAS ñ ROSALBA, GUERRERO MONTOYA: (C.C.S1904946' o Por participación eme caer 3x0. PEDIATRIC ADVANCED LIFE. SUPPORT (PAIS) 77 4 7. REANIMACIÓN 'AVANZADA PEDIATRICA: a Realizado; enja ejudad de Bogotá! Ps . El.día:3 de: Diciembre de 2021. A ¡Con'unalntensidad de 48 horas IN Encálidád dez - AS. + ¡PROMEEDOR, ' eno IE. 3 7% ¿Curso Oficial. que.sigue los lineamientos establecidos porta: ap CE A ¿American Heart Association... o o pi JAIME FERNÁNDEZ SARMIENTO Mod: 000,0 a ta, e Director HOSP SIMULADO 0 ai "
 
@@ -228,6 +320,9 @@ if __name__ == "__main__":
     # inference = ia_inference.get_inference(content_pdf)
     # print(inference)
 
-    ia_inference_image = GeminiInferenceForImages()
-    inference_image = ia_inference_image.get_inference('/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificado_reanimacion.jpg')
-    print(inference_image)
+    # ia_inference_image = GeminiInferenceForImages()
+    # inference_image = ia_inference_image.get_inference('/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificado_reanimacion.jpg')
+    # print(inference_image)
+
+    ia_inference_pdf = AntropicInferenceForPDF()
+    inference_pdf = ia_inference_pdf.get_inference('/home/desarrollo/Documents/certificados/Certificado La Cardio/Certificado Plan de Entrenamiento/328004_sebastian_kurt_villarroel_hagemann_cargue_plan_de_entrenamiento_1.pdf')
