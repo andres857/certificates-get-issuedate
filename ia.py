@@ -119,9 +119,6 @@ class BaseInference(ABC):
             if not isinstance(data, dict):
                 raise ResponseParsingError("La respuesta no es un objeto JSON válido")
             
-            if 'name' not in data:
-                raise ResponseParsingError("Falta el campo 'nombre' en la respuesta")
-            
             # Retornamos un diccionario normalizado
             return {
                 'name': data.get('name'),
@@ -169,6 +166,7 @@ class OpenAIInference(BaseInference):
     def get_inference(self, content_certificate, path_pdf=None):
         try:
             completion = self.client.chat.completions.create(
+                # model="gpt-4o-mini-2024-07-18",
                 model="gpt-3.5-turbo",
                 store=True,
                 messages=[
@@ -195,7 +193,6 @@ class OpenAIInference(BaseInference):
         
         except RateLimitError as e:
             print(f"Límite de solicitudes alcanzado: {str(e)}")
-            # Tal vez podrías pausar la ejecución aquí y esperar un rato antes de reintentar
             raise
         except APIConnectionError as e:
             print(f"Problema de conexión con la API: {str(e)}")
@@ -240,9 +237,9 @@ class GeminiInferenceForImages(BaseInference):
                 return "No se generó respuesta de texto."
 
         except FileNotFoundError:
-            return "Error: La imagen no se encontró en la ruta especificada."
+            raise
         except Exception as e:
-            return f"Ocurrió un error: {e}"
+            raise
 
 class AntropicInferenceForPDF(BaseInference):
     def __init__(self):
@@ -311,7 +308,8 @@ class AntropicInferenceForPDF(BaseInference):
         except Exception as e:
             error_message = f"Error inesperado: {str(e)}"
             print(error_message)
-            raise InferenceError(error_message)
+            # raise InferenceError(error_message)
+            raise
         
 if __name__ == "__main__":
     content_pdf="Texto extraído por OCR:EN ] 0 (aa. ! 'FUNDACIÓN:CARDIOINFANTIL:- INSTITUTO DE'CARDIOLOGIA: : *CENTRO' DE SIMULACIÓN Y. HABILIDADES'CLINICAS “VALENTÍN FUSTER” ¿CERTIEICAYAS ñ ROSALBA, GUERRERO MONTOYA: (C.C.S1904946' o Por participación eme caer 3x0. PEDIATRIC ADVANCED LIFE. SUPPORT (PAIS) 77 4 7. REANIMACIÓN 'AVANZADA PEDIATRICA: a Realizado; enja ejudad de Bogotá! Ps . El.día:3 de: Diciembre de 2021. A ¡Con'unalntensidad de 48 horas IN Encálidád dez - AS. + ¡PROMEEDOR, ' eno IE. 3 7% ¿Curso Oficial. que.sigue los lineamientos establecidos porta: ap CE A ¿American Heart Association... o o pi JAIME FERNÁNDEZ SARMIENTO Mod: 000,0 a ta, e Director HOSP SIMULADO 0 ai "

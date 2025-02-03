@@ -88,7 +88,8 @@ class OfficeDocumentExtractor:
         apropiado para extraer su contenido.
         """
         file_path = Path(file_path)
-        
+        print('procesando contenidoooooooooooooooooooooo de:',file_path)
+       
         if not file_path.exists():
             raise FileNotFoundError(f"El archivo {file_path} no existe")
 
