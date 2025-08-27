@@ -95,7 +95,7 @@ class OfficeDocumentExtractor:
         try:
             if file_path.suffix.lower() == '.pdf':
                 content_doc = self.extract_pdf(str(file_path))
-                print('AAAAAAAAAAAAA',file_path)
+                print('Procesando PDFFF',file_path)
                 content = self.ia_inference.get_inference(content_doc, file_path)
                 return content
             elif file_path.suffix.lower() == '.docx' or file_path.suffix.lower() == '.doc':

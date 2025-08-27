@@ -40,14 +40,14 @@ def leer_todos_certificates():
             path_file = os.path.join(raiz, archivo)
             try:
                 inference_response = extractor.extract_content(path_file)
+                identification = inference_response.get('identification')
                 issue_date = inference_response.get('issue_date')
                 expiration_date = inference_response.get('expiration_date')
                 # Llamamos a la función con las fechas correspondientes
-                if issue_date:
+                if identification:
                     renombrar_archivo_con_fechas(
                         ruta_original=path_file,
-                        issue_date=issue_date,
-                        expiration_date=expiration_date
+                        identification=identification,
                     )
                 else:
                     inference_response['name'] = archivo

@@ -65,10 +65,10 @@ class BaseInference(ABC):
 
         FORMATO DE SALIDA:
         {
-            "name": string | null,
-            "identification": string | null,
-            "issue_date": "2019-12-03T00:00:00.000Z" | null,
-            "expiration_date": "2019-12-03T00:00:00.000Z" | null
+            "name": string | None,
+            "identification": string | None,
+            "issue_date": "2019-12-03T00:00:00.000Z" | None,
+            "expiration_date": "2019-12-03T00:00:00.000Z" | None
         }
 
         EJEMPLO DE PROCESAMIENTO:
@@ -78,7 +78,7 @@ class BaseInference(ABC):
             "name": "JUAN PEREZ",
             "identification": "1234567",
             "issue_date": 2019-12-03T00:00:00.000Z,
-            "expiration_date": null
+            "expiration_date": None
         }
 
         IMPORTANTE:
@@ -185,8 +185,8 @@ class OpenAIInference(BaseInference):
             certificate_info = self.parse_response(response_text)
             print('EVALUANDOOOOOOOOOOOOOO',certificate_info)
             if certificate_info['issue_date'] is None:
-                print('Procesado con IAAAAAAAAA CLAUDE')
                 certificate_info = self.claude_fallback.get_inference(path_pdf)
+                print('Procesado con IAAAAAAAAA CLAUDE')
             else:
                 print('Procesadooooooooooooooo con OpenAI')
 

@@ -197,7 +197,7 @@ def extraer_id_archivo(nombre_archivo: str) -> str | None:
     
     return None
 
-def renombrar_archivo_con_fechas(ruta_original: str, issue_date: str, expiration_date: str | None = None) -> None:
+def renombrar_archivo_con_fechas(ruta_original: str, identification: str | None = None) -> None:
     """
     Renombra un archivo agregando las fechas al final, considerando que la fecha de expiración es opcional.
     
@@ -218,15 +218,10 @@ def renombrar_archivo_con_fechas(ruta_original: str, issue_date: str, expiration
     nombre_sin_extension, extension = os.path.splitext(nombre_original)
     
     # Convertimos la fecha de emisión de ISO a YYYY-MM-DD
-    fecha_emision = issue_date.split('T')[0]
+    # fecha_emision = issue_date.split('T')[0]
     
     # Construimos el nuevo nombre empezando con la fecha de emisión
-    nuevo_nombre = f"{nombre_sin_extension}_issueddate{fecha_emision}"
-    
-    # Agregamos la fecha de expiración solo si está presente
-    if expiration_date:
-        fecha_expiracion = expiration_date.split('T')[0]
-        nuevo_nombre += f"_expirationdate{fecha_expiracion}"
+    nuevo_nombre = f"{identification}_{nombre_sin_extension}"
     
     # Agregamos la extensión al final
     nuevo_nombre += extension
