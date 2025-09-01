@@ -1,4 +1,4 @@
-import subprocess
+import subprocess, shutil
 from pathlib import Path
 import logging, os
 
@@ -197,46 +197,120 @@ def extraer_id_archivo(nombre_archivo: str) -> str | None:
     
     return None
 
-def renombrar_archivo_con_fechas(ruta_original: str, identification: str | None = None) -> None:
+
+def mover_a_duplicados(archivo_path, carpeta_duplicados, razon=""):
     """
-    Renombra un archivo agregando las fechas al final, considerando que la fecha de expiración es opcional.
+    Mueve un archivo a la carpeta de duplicados
+    """
+    try:
+        if not os.path.exists(archivo_path):
+            print(f"❌ Archivo no existe: {archivo_path}")
+            return False
+            
+        nombre_archivo = os.path.basename(archivo_path)
+        destino = os.path.join(carpeta_duplicados, nombre_archivo)
+        
+        # Si ya existe en duplicados, agregar sufijo numérico
+        contador = 1
+        nombre_base, extension = os.path.splitext(nombre_archivo)
+        while os.path.exists(destino):
+            nuevo_nombre = f"{nombre_base}_dup{contador}{extension}"
+            destino = os.path.join(carpeta_duplicados, nuevo_nombre)
+            contador += 1
+        
+        shutil.move(archivo_path, destino)
+        print(f"🗂️  ✅ MOVIDO a duplicados: {nombre_archivo} → {os.path.basename(destino)} {razon}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error moviendo {archivo_path} a duplicados: {e}")
+        return False
+
+def renombrar_archivo_con_fechas(ruta_original: str, identification: str | None = None, 
+                                issue_date: str | None = None, expiration_date: str | None = None,
+                                carpeta_duplicados: str | None = None) -> bool:
+    """
+    Renombra un archivo agregando las fechas al final. Si ya existe, lo mueve a duplicados.
     
     Args:
         ruta_original: Ruta completa del archivo
+        identification: ID de la persona
         issue_date: Fecha de emisión en formato ISO
         expiration_date: Fecha de expiración en formato ISO (opcional)
+        carpeta_duplicados: Ruta a la carpeta de duplicados
     
-    Por ejemplo:
-    Con fecha de expiración:
-        De: 52030365_maria_cristina_cardenas.pdf 
-        A:  52030365_maria_cristina_cardenas_issueddate2018-07-28_expirationdate2018-07-28.pdf
-    Sin fecha de expiración:
-        A:  52030365_maria_cristina_cardenas_issueddate2018-07-28.pdf
+    Returns:
+        bool: True si el renombrado fue exitoso, False si se movió a duplicados
     """
     directorio = os.path.dirname(ruta_original)
     nombre_original = os.path.basename(ruta_original)
     nombre_sin_extension, extension = os.path.splitext(nombre_original)
     
-    # Convertimos la fecha de emisión de ISO a YYYY-MM-DD
-    # fecha_emision = issue_date.split('T')[0]
+    # Si no hay identification, no podemos renombrar
+    if not identification:
+        print(f"❌ No se puede renombrar {nombre_original}: falta identification")
+        return False
     
-    # Construimos el nuevo nombre empezando con la fecha de emisión
-    nuevo_nombre = f"{identification}_{nombre_sin_extension}"
+    # Construir el nuevo nombre base
+    nuevo_nombre = f"{nombre_sin_extension}"
     
-    # Agregamos la extensión al final
+    # Agregar fecha de emisión si existe
+    if issue_date:
+        # Convertir de ISO a YYYY-MM-DD si es necesario
+        fecha_emision = issue_date.split('T')[0] if 'T' in issue_date else issue_date
+        nuevo_nombre += f"_issueddate{fecha_emision}"
+    
+    # Agregar fecha de expiración si existe
+    if expiration_date:
+        # Convertir de ISO a YYYY-MM-DD si es necesario
+        fecha_expiracion = expiration_date.split('T')[0] if 'T' in expiration_date else expiration_date
+        nuevo_nombre += f"_expirationdate{fecha_expiracion}"
+    
+    # Agregar la extensión
     nuevo_nombre += extension
     
-    # Creamos la ruta completa nueva
+    # Crear la ruta completa nueva
     nueva_ruta = os.path.join(directorio, nuevo_nombre)
+    
+    # Verificar si el archivo destino ya existe
+    if os.path.exists(nueva_ruta):
+        print(f"⚠️  El archivo renombrado ya existe: {nuevo_nombre}")
+        
+        # Si tenemos carpeta de duplicados, mover el archivo actual allí CON LAS FECHAS
+        if carpeta_duplicados:
+            # Primero renombramos el archivo temporal con las fechas
+            try:
+                temp_nueva_ruta = os.path.join(carpeta_duplicados, nuevo_nombre)
+                
+                # Si ya existe en duplicados, agregar sufijo numérico
+                contador = 1
+                nombre_base_dup, extension_dup = os.path.splitext(nuevo_nombre)
+                while os.path.exists(temp_nueva_ruta):
+                    nuevo_nombre_dup = f"{nombre_base_dup}_dup{contador}{extension_dup}"
+                    temp_nueva_ruta = os.path.join(carpeta_duplicados, nuevo_nombre_dup)
+                    contador += 1
+                
+                # Mover con el nombre que incluye fechas
+                shutil.move(ruta_original, temp_nueva_ruta)
+                print(f"🗂️  ✅ MOVIDO a duplicados con fechas: {nombre_original} → {os.path.basename(temp_nueva_ruta)} (archivo ya renombrado previamente)")
+                return False  # Se movió a duplicados, no se renombró en lugar original
+                
+            except Exception as e:
+                print(f"❌ Error moviendo {ruta_original} a duplicados: {e}")
+                return False
+        
+        print(f"   No se realizó el renombrado")
+        return False
     
     try:
         os.rename(ruta_original, nueva_ruta)
-        print(f"Archivo renombrado correctamente:")
-        print(f"De: {nombre_original}")
-        print(f"A:  {nuevo_nombre}")
+        print(f"✅ Archivo renombrado correctamente:")
+        print(f"   De: {nombre_original}")
+        print(f"   A:  {nuevo_nombre}")
+        return True
     except Exception as e:
-        print(f"Error al renombrar el archivo: {str(e)}")
-
+        print(f"❌ Error al renombrar el archivo: {str(e)}")
+        return False
 
 if __name__ == "__main__":
     # Puedes especificar aquí la ruta de tu archivo PPTX

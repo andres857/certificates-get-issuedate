@@ -169,13 +169,14 @@ class OpenAIInference(BaseInference):
     def get_inference(self, content_certificate, path_pdf=None):
         try:
             completion = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                # model="gpt-3.5-turbo",
+                model="gpt-5-mini",
                 store=True,
                 messages=[
                     {"role": "system", "content": self.prompt},
                     {"role": "user", "content": content_certificate}
                 ],
-                temperature=0.3
+                # temperature=1
             )
             response_text = completion.choices[0].message.content
 
@@ -249,7 +250,9 @@ class AntropicInferenceForPDF(BaseInference):
         super().__init__()
         self.api_key = os.getenv('ANTHROPIC_API_KEY')
         self.client = anthropic.Anthropic(api_key=self.api_key)
-        self.model = "claude-3-5-sonnet-20241022"
+        # self.model = "claude-3-5-sonnet-20241022"claude-sonnet-4-0
+        self.model = "claude-sonnet-4-0"
+
         # claude-3-5-sonnet-20240620
         # "claude-3-5-sonnet-20241022"
 
