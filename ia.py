@@ -165,6 +165,7 @@ class OpenAIInference(BaseInference):
         self.api_key = os.getenv('API_OPENAI')
         self.client = OpenAI(api_key=self.api_key)
         self.claude_fallback = AntropicInferenceForPDF()
+        self.gemini_fallback = GeminiInferenceForDocuments()  # Nuevo fallback
 
     def get_inference(self, content_certificate, path_pdf=None):
         try:
@@ -184,14 +185,48 @@ class OpenAIInference(BaseInference):
                 raise Exception("La API no devolvió ninguna respuesta")
                 
             certificate_info = self.parse_response(response_text)
-            print('EVALUANDOOOOOOOOOOOOOO',certificate_info)
+            print('EVALUANDO OpenAI:', certificate_info)
+            
             if certificate_info['issue_date'] is None:
-                certificate_info = self.claude_fallback.get_inference(path_pdf)
-                print('Procesado con IAAAAAAAAA CLAUDE')
+                print('Intentando procesar con CLAUDE...')
+                try:
+                    claude_result = self.claude_fallback.get_inference(path_pdf)
+                    
+                    # Verificar si Claude extrajo el issue_date
+                    if claude_result.get('issue_date') is not None:
+                        certificate_info = claude_result
+                        print('Procesado con CLAUDE exitosamente')
+                    else:
+                        print('CLAUDE no extrajo issue_date, intentando con GEMINI...')
+                        try:
+                            gemini_result = self.gemini_fallback.get_inference(path_pdf)
+                            if gemini_result.get('issue_date') is not None:
+                                certificate_info = gemini_result
+                                print('Procesado con GEMINI exitosamente')
+                            else:
+                                print('GEMINI tampoco extrajo issue_date, usando resultado de CLAUDE')
+                                certificate_info = claude_result
+                                certificate_info['message_error'] = "Ningún modelo pudo extraer issue_date"
+                        except Exception as gemini_error:
+                            print(f'Error con GEMINI: {gemini_error}')
+                            certificate_info = claude_result
+                            certificate_info['message_error'] = f"Claude no extrajo issue_date. Gemini falló: {gemini_error}"
+                            
+                except Exception as claude_error:
+                    print(f'Error con CLAUDE: {claude_error}')
+                    print('Intentando procesar con GEMINI...')
+                    try:
+                        certificate_info = self.gemini_fallback.get_inference(path_pdf)
+                        print('Procesado con GEMINI exitosamente')
+                    except Exception as gemini_error:
+                        print(f'Error con GEMINI: {gemini_error}')
+                        print('Todos los fallbacks fallaron, retornando resultado original de OpenAI')
+                        # Retornar el resultado original de OpenAI aunque no tenga issue_date
+                        # pero agregar información sobre los errores de fallback
+                        certificate_info['message_error'] = f"OpenAI no extrajo issue_date. Claude falló: {claude_error}. Gemini falló: {gemini_error}"
             else:
-                print('Procesadooooooooooooooo con OpenAI')
+                print('Procesado con OpenAI exitosamente')
 
-            # print(f"Información extraída: {certificate_info}")
             return certificate_info
         
         except RateLimitError as e:
@@ -250,8 +285,8 @@ class AntropicInferenceForPDF(BaseInference):
         super().__init__()
         self.api_key = os.getenv('ANTHROPIC_API_KEY')
         self.client = anthropic.Anthropic(api_key=self.api_key)
-        # self.model = "claude-3-5-sonnet-20241022"claude-sonnet-4-0
-        self.model = "claude-sonnet-4-0"
+        self.model = "claude-3-5-sonnet-20241022"
+        # self.model = "claude-sonnet-4-20250514"
 
         # claude-3-5-sonnet-20240620
         # "claude-3-5-sonnet-20241022"
@@ -315,6 +350,123 @@ class AntropicInferenceForPDF(BaseInference):
             error_message = f"Error inesperado: {str(e)}"
             print(error_message)
             raise InferenceError(error_message)
+
+class GeminiInferenceForDocuments(BaseInference):
+    def __init__(self):
+        super().__init__()
+        self.api_key = os.getenv('GEMINI_API')
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        
+    def get_inference(self, content_or_path=None, file_path=None):
+        """
+        Analiza un documento (imagen o PDF) usando la API de Gemini.
+        
+        Args:
+            content_or_path: Si file_path es None, este es la ruta del archivo.
+                           Si file_path no es None, este parámetro se ignora.
+            file_path: La ruta al archivo (imagen o PDF) que se va a analizar.
+                      Si se proporciona, se usa este en lugar de content_or_path.
+
+        Returns:
+            dict: La respuesta parseada del modelo como un diccionario con la estructura:
+                  {'name': str|None, 'identification': str|None, 'issue_date': str|None, 
+                   'expiration_date': str|None, 'message_error': str|None}
+        """
+        try:
+            # Determinar qué parámetro usar como ruta del archivo
+            if file_path is not None:
+                # Llamada con dos parámetros: get_inference(content_doc, file_path)
+                actual_file_path = file_path
+            else:
+                # Llamada con un parámetro: get_inference(file_path)
+                actual_file_path = content_or_path
+                
+            # Convertir a string si es un Path object
+            file_path_str = str(actual_file_path)
+            
+            # Validar que el archivo existe
+            if not os.path.exists(file_path_str):
+                raise InferenceError(f"El archivo no se encontró en la ruta especificada: {file_path_str}")
+
+            mime_type = None
+            file_content = None
+            file_extension = file_path_str.lower()
+
+            if file_extension.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")):
+                # Es una imagen - usar PIL
+                mime_type = self._get_image_mime_type(file_extension)
+                file_content = Image.open(file_path_str)
+                
+            elif file_extension.endswith(".pdf"):
+                # Es un PDF - leer como binario
+                mime_type = "application/pdf"
+                with open(file_path_str, "rb") as f:
+                    file_content = f.read()
+                    
+            else:
+                raise InferenceError("Tipo de archivo no soportado. Solo se aceptan imágenes (JPG, PNG, GIF, WEBP, BMP) y PDF.")
+
+            # Preparar el contenido para el modelo
+            if isinstance(file_content, Image.Image):
+                # Para imágenes: enviar directamente el objeto PIL Image
+                contents = [self.prompt, file_content]
+            else:
+                # Para PDFs: enviar como documento con mime_type y data
+                contents = [
+                    self.prompt,
+                    {
+                        "mime_type": mime_type,
+                        "data": file_content
+                    }
+                ]
+
+            # Generar contenido con Gemini
+            response = self.model.generate_content(contents)
+            response.resolve()  # Asegurar que la respuesta está completa
+
+            if not response.text:
+                return {
+                    "name": None,
+                    "identification": None, 
+                    "issue_date": None,
+                    "expiration_date": None,
+                    "message_error": "El modelo no generó respuesta de texto"
+                }
+
+            # Parsear la respuesta usando el método heredado de BaseInference
+            return self.parse_response(response.text)
+
+        except InferenceError:
+            # Re-lanzar errores de inferencia tal como están
+            raise
+            
+        except FileNotFoundError:
+            error_msg = f"El archivo no se encontró en la ruta especificada: {file_path_str}"
+            raise InferenceError(error_msg)
+            
+        except Exception as e:
+            error_msg = f"Error inesperado durante la inferencia con Gemini: {str(e)}"
+            print(f"Error detallado: {e}")
+            raise InferenceError(error_msg)
+    
+    def _get_image_mime_type(self, file_extension):
+        """Determinar el mime_type correcto basado en la extensión del archivo"""
+        mime_types = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg", 
+            ".png": "image/png",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp"
+        }
+        
+        for ext, mime in mime_types.items():
+            if file_extension.endswith(ext):
+                return mime
+        
+        # Default fallback
+        return "image/jpeg"
         
 if __name__ == "__main__":
     content_pdf="Texto extraído por OCR:EN ] 0 (aa. ! 'FUNDACIÓN:CARDIOINFANTIL:- INSTITUTO DE'CARDIOLOGIA: : *CENTRO' DE SIMULACIÓN Y. HABILIDADES'CLINICAS “VALENTÍN FUSTER” ¿CERTIEICAYAS ñ ROSALBA, GUERRERO MONTOYA: (C.C.S1904946' o Por participación eme caer 3x0. PEDIATRIC ADVANCED LIFE. SUPPORT (PAIS) 77 4 7. REANIMACIÓN 'AVANZADA PEDIATRICA: a Realizado; enja ejudad de Bogotá! Ps . El.día:3 de: Diciembre de 2021. A ¡Con'unalntensidad de 48 horas IN Encálidád dez - AS. + ¡PROMEEDOR, ' eno IE. 3 7% ¿Curso Oficial. que.sigue los lineamientos establecidos porta: ap CE A ¿American Heart Association... o o pi JAIME FERNÁNDEZ SARMIENTO Mod: 000,0 a ta, e Director HOSP SIMULADO 0 ai "
@@ -323,9 +475,9 @@ if __name__ == "__main__":
     # inference = ia_inference.get_inference(content_pdf)
     # print(inference)
 
-    # ia_inference_image = GeminiInferenceForImages()
-    # inference_image = ia_inference_image.get_inference('/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23496192_luz_marina_bustos_rodriguez_certificado_reanimacion.jpg')
-    # print(inference_image)
+    ia_inference_image = GeminiInferenceForDocuments()
+    inference_image = ia_inference_image.get_inference('/home/desarrollo/Documents/wc/project-certificates-cardio/processing-certificates/certificates/test/6613299_jairo_gallo_diaz_certificados_atencion_a_victimas_de_violencia_sexual.pdf')
+    print(inference_image)
 
-    ia_inference_pdf = AntropicInferenceForPDF()
-    inference_pdf = ia_inference_pdf.get_inference('/home/desarrollo/Documents/certificados/Certificado La Cardio/Certificado Plan de Entrenamiento/328004_sebastian_kurt_villarroel_hagemann_cargue_plan_de_entrenamiento_1.pdf')
+    # ia_inference_pdf = AntropicInferenceForPDF()
+    # inference_pdf = ia_inference_pdf.get_inference('/home/desarrollo/Documents/certificados/Certificado La Cardio/Certificado Plan de Entrenamiento/328004_sebastian_kurt_villarroel_hagemann_cargue_plan_de_entrenamiento_1.pdf')

@@ -134,6 +134,8 @@ class OfficeDocumentExtractor:
         except Exception as e:
             raise
 
+
+
 if __name__ == "__main__":
     extractor = OfficeDocumentExtractor()
     xlsx_content = extractor.extract_content("/home/desarrollo/Documents/wc/processing-certificates/certificates/1/23002896_clarissa_quintana_ramos_certificado_reanimacion.docx")

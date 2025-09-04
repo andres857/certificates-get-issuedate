@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 from enum import Enum
 from readDocs import OfficeDocumentExtractor
-from utils import extraer_id_archivo, renombrar_archivo_con_fechas
+from utils import extraer_id_archivo, renombrar_archivo_con_fechas, obtener_identificacion_validada
 from excel import (create_excel_template, insert_processed_certificate, 
                    insert_duplicate_certificate, insert_error_certificate, 
                    update_summary_stats)
@@ -179,7 +179,27 @@ def leer_todos_certificates():
                         # Registrar este certificado como procesado
                         certificados_procesados[clave_certificado] = archivo
                 
-                identification = inference_response.get('identification')
+                identification, es_validacion_ok, mensaje_validacion = obtener_identificacion_validada(inference_response, archivo)
+
+                print(f"🔍 {mensaje_validacion}")
+
+                # Si no es válido pero tenemos identification del archivo, continuar con advertencia
+                if not es_validacion_ok:
+                    if identification:  # Tenemos ID del archivo pero hay problemas con la inferencia
+                        print(f"⚠️  ADVERTENCIA: Continuando con ID del archivo: {identification}")
+                
+                    else:  
+                        print(f"❌ ERROR: {mensaje_validacion}")
+                        insert_error_certificate(
+                            path_report,
+                            archivo,
+                            "Sin identificación válida",
+                            mensaje_validacion,
+                            inference_response
+                        )
+                        stats['errors'] += 1
+                        continue
+                
                 issue_date = inference_response.get('issue_date')
                 expiration_date = inference_response.get('expiration_date')
                     

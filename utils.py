@@ -197,6 +197,56 @@ def extraer_id_archivo(nombre_archivo: str) -> str | None:
     
     return None
 
+def obtener_identificacion_validada(inference_response, nombre_archivo):
+    """
+    Obtiene la identificación prioritariamente del nombre del archivo y valida que también exista en la inferencia
+    
+    Args:
+        inference_response (dict): Respuesta de la inferencia con los datos extraídos
+        nombre_archivo (str): Nombre del archivo a procesar
+    
+    Returns:
+        tuple: (identification_final, es_valido, mensaje_detalle)
+    """
+    # PRIORITARIO: Obtener identificación del nombre del archivo usando la función existente
+    id_archivo = extraer_id_archivo(nombre_archivo)
+    
+    # Obtener identificación de la inferencia para validación
+    id_inferencia = inference_response.get('identification')
+    
+    # Si no hay identificación en el archivo, no es válido
+    if not id_archivo:
+        if id_inferencia:
+            return None, False, f"No se pudo extraer identificación del nombre del archivo, solo de inferencia: '{id_inferencia}'"
+        else:
+            return None, False, "No se encontró identificación ni en nombre del archivo ni en inferencia"
+    
+    # Si hay identificación en el archivo pero no en la inferencia
+    if not id_inferencia:
+        return id_archivo, False, f"Identificación encontrada en archivo ('{id_archivo}') pero no en inferencia - posible error de extracción"
+    
+    # Si ambas existen, el archivo tiene prioridad pero validamos que sean coherentes
+    def limpiar_id(identificacion):
+        if not identificacion:
+            return None
+        return str(identificacion).replace('-', '').replace(' ', '').lower()
+    
+    id_archivo_limpia = limpiar_id(id_archivo)
+    id_inferencia_limpia = limpiar_id(id_inferencia)
+    
+    # Verificar coherencia entre ambas identificaciones
+    if id_archivo_limpia == id_inferencia_limpia:
+        return id_archivo, True, f"Identificación validada: archivo='{id_archivo}', inferencia='{id_inferencia}'"
+    
+    # Verificar coincidencia parcial
+    if (id_inferencia_limpia in id_archivo_limpia or 
+        id_archivo_limpia in id_inferencia_limpia):
+        return id_archivo, True, f"Identificación parcialmente validada: archivo='{id_archivo}', inferencia='{id_inferencia}'"
+    
+    # Las identificaciones no coinciden - usar la del archivo pero marcar como advertencia
+    return id_archivo, False, f"ADVERTENCIA: Identificaciones no coinciden - usando del archivo ('{id_archivo}') vs inferencia ('{id_inferencia}')"
+
+
 
 def mover_a_duplicados(archivo_path, carpeta_duplicados, razon=""):
     """
