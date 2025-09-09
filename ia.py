@@ -165,19 +165,35 @@ class OpenAIInference(BaseInference):
         self.api_key = os.getenv('API_OPENAI')
         self.client = OpenAI(api_key=self.api_key)
         self.claude_fallback = AntropicInferenceForPDF()
-        self.gemini_fallback = GeminiInferenceForDocuments()  # Nuevo fallback
+        self.gemini_fallback = GeminiInferenceForDocuments()
 
-    def get_inference(self, content_certificate, path_pdf=None):
+    def get_inference(self, content_certificate, path_pdf=None, force_model=None):
+        """
+        Obtiene inferencia de certificados con opción de forzar un modelo específico.
+        
+        Args:
+            content_certificate: Contenido del certificado extraído por OCR
+            path_pdf: Ruta al archivo PDF (requerido para fallbacks)
+            force_model: Modelo específico a usar ('openai', 'gemini', 'claude'). 
+                        Si es None, sigue el flujo normal.
+        
+        Returns:
+            dict: Información extraída del certificado
+        """
+        
+        # Si se fuerza un modelo específico, usar solo ese
+        if force_model:
+            return self._process_with_specific_model(force_model, content_certificate, path_pdf)
+        
+        # Flujo normal: OpenAI → Gemini → Claude
         try:
             completion = self.client.chat.completions.create(
-                # model="gpt-3.5-turbo",
                 model="gpt-5-mini",
                 store=True,
                 messages=[
                     {"role": "system", "content": self.prompt},
                     {"role": "user", "content": content_certificate}
-                ],
-                # temperature=1
+                ]
             )
             response_text = completion.choices[0].message.content
 
@@ -188,42 +204,40 @@ class OpenAIInference(BaseInference):
             print('EVALUANDO OpenAI:', certificate_info)
             
             if certificate_info['issue_date'] is None:
-                print('Intentando procesar con CLAUDE...')
+                print('Intentando procesar con GEMINI...')
                 try:
-                    claude_result = self.claude_fallback.get_inference(path_pdf)
+                    gemini_result = self.gemini_fallback.get_inference(path_pdf)
                     
-                    # Verificar si Claude extrajo el issue_date
-                    if claude_result.get('issue_date') is not None:
-                        certificate_info = claude_result
-                        print('Procesado con CLAUDE exitosamente')
-                    else:
-                        print('CLAUDE no extrajo issue_date, intentando con GEMINI...')
-                        try:
-                            gemini_result = self.gemini_fallback.get_inference(path_pdf)
-                            if gemini_result.get('issue_date') is not None:
-                                certificate_info = gemini_result
-                                print('Procesado con GEMINI exitosamente')
-                            else:
-                                print('GEMINI tampoco extrajo issue_date, usando resultado de CLAUDE')
-                                certificate_info = claude_result
-                                certificate_info['message_error'] = "Ningún modelo pudo extraer issue_date"
-                        except Exception as gemini_error:
-                            print(f'Error con GEMINI: {gemini_error}')
-                            certificate_info = claude_result
-                            certificate_info['message_error'] = f"Claude no extrajo issue_date. Gemini falló: {gemini_error}"
-                            
-                except Exception as claude_error:
-                    print(f'Error con CLAUDE: {claude_error}')
-                    print('Intentando procesar con GEMINI...')
-                    try:
-                        certificate_info = self.gemini_fallback.get_inference(path_pdf)
+                    # Verificar si Gemini extrajo el issue_date
+                    if gemini_result.get('issue_date') is not None:
+                        certificate_info = gemini_result
                         print('Procesado con GEMINI exitosamente')
-                    except Exception as gemini_error:
-                        print(f'Error con GEMINI: {gemini_error}')
+                    else:
+                        print('GEMINI no extrajo issue_date, intentando con CLAUDE...')
+                        try:
+                            claude_result = self.claude_fallback.get_inference(path_pdf)
+                            if claude_result.get('issue_date') is not None:
+                                certificate_info = claude_result
+                                print('Procesado con CLAUDE exitosamente')
+                            else:
+                                print('CLAUDE tampoco extrajo issue_date, usando resultado de GEMINI')
+                                certificate_info = gemini_result
+                                certificate_info['message_error'] = "Ningún modelo pudo extraer issue_date"
+                        except Exception as claude_error:
+                            print(f'Error con CLAUDE: {claude_error}')
+                            certificate_info = gemini_result
+                            certificate_info['message_error'] = f"Gemini no extrajo issue_date. Claude falló: {claude_error}"
+                            
+                except Exception as gemini_error:
+                    print(f'Error con GEMINI: {gemini_error}')
+                    print('Intentando procesar con CLAUDE...')
+                    try:
+                        certificate_info = self.claude_fallback.get_inference(path_pdf)
+                        print('Procesado con CLAUDE exitosamente')
+                    except Exception as claude_error:
+                        print(f'Error con CLAUDE: {claude_error}')
                         print('Todos los fallbacks fallaron, retornando resultado original de OpenAI')
-                        # Retornar el resultado original de OpenAI aunque no tenga issue_date
-                        # pero agregar información sobre los errores de fallback
-                        certificate_info['message_error'] = f"OpenAI no extrajo issue_date. Claude falló: {claude_error}. Gemini falló: {gemini_error}"
+                        certificate_info['message_error'] = f"OpenAI no extrajo issue_date. Gemini falló: {gemini_error}. Claude falló: {claude_error}"
             else:
                 print('Procesado con OpenAI exitosamente')
 
@@ -231,7 +245,6 @@ class OpenAIInference(BaseInference):
         
         except RateLimitError as e:
             print(f"Límite de solicitudes alcanzado: {str(e)}")
-            # Tal vez podrías pausar la ejecución aquí y esperar un rato antes de reintentar
             raise
         except APIConnectionError as e:
             print(f"Problema de conexión con la API: {str(e)}")
@@ -245,6 +258,68 @@ class OpenAIInference(BaseInference):
         except Exception as e:
             print(f"Error inesperado: {str(e)}")
             raise
+
+    def _process_with_specific_model(self, model_name, content_certificate, path_pdf):
+        """
+        Procesa el certificado usando un modelo específico.
+        
+        Args:
+            model_name: Nombre del modelo ('openai', 'gemini', 'claude')
+            content_certificate: Contenido del certificado
+            path_pdf: Ruta al archivo PDF
+        
+        Returns:
+            dict: Información extraída del certificado
+        """
+        model_name = model_name.lower()
+        
+        try:
+            if model_name == 'openai':
+                print(f'Forzando procesamiento solo con OpenAI...')
+                completion = self.client.chat.completions.create(
+                    model="gpt-5-mini",
+                    store=True,
+                    messages=[
+                        {"role": "system", "content": self.prompt},
+                        {"role": "user", "content": content_certificate}
+                    ]
+                )
+                response_text = completion.choices[0].message.content
+                if not response_text:
+                    raise Exception("La API no devolvió ninguna respuesta")
+                result = self.parse_response(response_text)
+                print('Procesado SOLO con OpenAI')
+                return result
+                
+            elif model_name == 'gemini':
+                print(f'Forzando procesamiento solo con Gemini...')
+                if not path_pdf:
+                    raise ValueError("path_pdf es requerido para usar Gemini")
+                result = self.gemini_fallback.get_inference(path_pdf)
+                print('Procesado SOLO con Gemini')
+                return result
+                
+            elif model_name == 'claude':
+                print(f'Forzando procesamiento solo con Claude...')
+                if not path_pdf:
+                    raise ValueError("path_pdf es requerido para usar Claude")
+                result = self.claude_fallback.get_inference(path_pdf)
+                print('Procesado SOLO con Claude')
+                return result
+                
+            else:
+                raise ValueError(f"Modelo '{model_name}' no reconocido. Opciones válidas: 'openai', 'gemini', 'claude'")
+                
+        except Exception as e:
+            print(f"Error al procesar con {model_name.upper()}: {e}")
+            # Retornar estructura básica con error
+            return {
+                'name': None,
+                'identification': None,
+                'issue_date': None,
+                'expiration_date': None,
+                'message_error': f"Error con {model_name.upper()}: {str(e)}"
+            }
 
 class GeminiInferenceForImages(BaseInference):
     def __init__(self):
@@ -356,7 +431,7 @@ class GeminiInferenceForDocuments(BaseInference):
         super().__init__()
         self.api_key = os.getenv('GEMINI_API')
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
     def get_inference(self, content_or_path=None, file_path=None):
         """
@@ -422,6 +497,7 @@ class GeminiInferenceForDocuments(BaseInference):
                 ]
 
             # Generar contenido con Gemini
+            print('Procesado con Gemini', file_path_str)
             response = self.model.generate_content(contents)
             response.resolve()  # Asegurar que la respuesta está completa
 
