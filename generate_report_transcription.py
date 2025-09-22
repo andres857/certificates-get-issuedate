@@ -1,6 +1,7 @@
 """
 Sistema de extracción y reporte de certificaciones médicas
 Genera reportes Excel con información completa de certificados incluyendo transcripción
+NUEVA FUNCIONALIDAD: Manejo de PDFs multipágina con separación automática
 """
 
 import os
@@ -13,7 +14,7 @@ import pytesseract
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from PIL import Image
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -23,6 +24,7 @@ import google.generativeai as genai
 from openai import OpenAI, RateLimitError, APIConnectionError, Timeout, OpenAIError
 import anthropic
 from datetime import datetime
+import shutil
 
 # Cargar variables de entorno
 load_dotenv()
@@ -387,8 +389,75 @@ class ModelFactory:
             logger.warning(f"Modelo '{model_name}' no reconocido. Usando OpenAI por defecto.")
             return OpenAIInferenceReport()
 
+class PDFSplitter:
+    """🆕 NUEVA CLASE: Maneja la separación de PDFs multipágina"""
+    
+    def __init__(self):
+        pass
+    
+    def get_pdf_page_count(self, file_path: str) -> int:
+        """Obtiene el número de páginas de un PDF"""
+        try:
+            pdf_document = fitz.open(file_path)
+            page_count = pdf_document.page_count
+            pdf_document.close()
+            return page_count
+        except Exception as e:
+            logger.error(f"Error obteniendo número de páginas de {file_path}: {str(e)}")
+            return 1  # Asumir 1 página si hay error
+    
+    def split_pdf_pages(self, pdf_path: str, output_directory: str) -> Tuple[bool, list]:
+        """
+        Separa un PDF en páginas individuales
+        
+        Args:
+            pdf_path: Ruta del PDF original
+            output_directory: Directorio donde guardar las páginas separadas
+            
+        Returns:
+            Tuple[bool, list]: (éxito, lista_de_archivos_creados)
+        """
+        try:
+            # Crear directorio de salida si no existe
+            os.makedirs(output_directory, exist_ok=True)
+            
+            # Abrir PDF original
+            pdf_document = fitz.open(pdf_path)
+            
+            # Obtener nombre base del archivo
+            base_name = Path(pdf_path).stem
+            created_files = []
+            
+            logger.info(f"📄 Separando PDF '{base_name}' en {pdf_document.page_count} páginas...")
+            
+            # Separar cada página
+            for page_num in range(pdf_document.page_count):
+                # Crear nuevo PDF con una sola página
+                new_pdf = fitz.open()
+                new_pdf.insert_pdf(pdf_document, from_page=page_num, to_page=page_num)
+                
+                # Nombre del archivo de la página
+                page_filename = f"{base_name}_pagina_{page_num + 1:02d}.pdf"
+                page_path = os.path.join(output_directory, page_filename)
+                
+                # Guardar página
+                new_pdf.save(page_path)
+                new_pdf.close()
+                
+                created_files.append(page_path)
+                logger.info(f"   ✅ Página {page_num + 1} guardada como: {page_filename}")
+            
+            pdf_document.close()
+            
+            logger.info(f"🎉 PDF separado exitosamente en {len(created_files)} archivos")
+            return True, created_files
+            
+        except Exception as e:
+            logger.error(f"❌ Error separando PDF {pdf_path}: {str(e)}")
+            return False, []
+
 class DocumentExtractorReport:
-    """Extractor unificado para documentos con reporte completo"""
+    """Extractor unificado para documentos con reporte completo - MEJORADO para manejar PDFs multipágina"""
     
     def __init__(self):
         # Crear modelo principal según configuración
@@ -404,6 +473,9 @@ class DocumentExtractorReport:
         # Remover el modelo principal de los fallbacks
         if DEFAULT_MODEL in self.fallback_models:
             del self.fallback_models[DEFAULT_MODEL]
+        
+        # 🆕 NUEVA FUNCIONALIDAD: Inicializar splitter de PDFs
+        self.pdf_splitter = PDFSplitter()
 
     def extract_pdf_content(self, file_path):
         """Extrae contenido de PDF usando OCR"""
@@ -451,9 +523,19 @@ class DocumentExtractorReport:
             logger.error(f"Error extrayendo DOCX: {str(e)}")
             raise InferenceError(f"Error extrayendo DOCX: {str(e)}")
 
+    def should_split_pdf(self, file_path: str) -> bool:
+        """🆕 NUEVA FUNCIÓN: Determina si un PDF debe ser separado"""
+        if Path(file_path).suffix.lower() != '.pdf':
+            return False
+        
+        page_count = self.pdf_splitter.get_pdf_page_count(file_path)
+        return page_count > 1
+
     def extract_content(self, file_path: str) -> tuple:
         """
         Extrae contenido y obtiene información del certificado
+        🆕 MEJORADO: Ahora maneja separación automática de PDFs multipágina
+        
         Retorna: (info_certificado, transcripcion_completa)
         """
         file_path = Path(file_path)
@@ -679,17 +761,120 @@ class ExcelReportManager:
         except Exception:
             return iso_date_str
 
-def process_certificates_directory():
-    """Función principal para procesar todos los certificados y generar reporte"""
+def process_single_file(file_path: str, excel_manager: ExcelReportManager, extractor: DocumentExtractorReport, 
+                       excel_path: Path, folder_name: str) -> Tuple[bool, str]:
+    """
+    🆕 NUEVA FUNCIÓN: Procesa un archivo individual
     
-    logger.info("=" * 60)
+    Returns:
+        Tuple[bool, str]: (éxito, mensaje_error)
+    """
+    try:
+        filename = os.path.basename(file_path)
+        logger.info(f"📄 Procesando archivo: {filename}")
+        
+        # Extraer información y transcripción
+        certificate_info, transcription = extractor.extract_content(file_path)
+        
+        # Insertar en Excel
+        excel_manager.insert_certificate_data(excel_path, certificate_info, transcription, filename)
+        
+        logger.info(f"✅ Éxito: {filename}")
+        return True, ""
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ Error procesando {filename}: {error_msg}")
+        
+        # Insertar fila de error
+        error_data = {
+            'certificate_name': '',
+            'message_error': error_msg
+        }
+        try:
+            excel_manager.insert_certificate_data(excel_path, error_data, f"Error al procesar: {error_msg}", filename)
+        except Exception as excel_error:
+            logger.error(f"Error insertando error en Excel: {excel_error}")
+        
+        return False, error_msg
+
+def process_multipage_pdf(pdf_path: str, extractor: DocumentExtractorReport, 
+                         excel_manager: ExcelReportManager) -> Tuple[int, int]:
+    """
+    🆕 NUEVA FUNCIÓN PRINCIPAL: Maneja PDFs con múltiples páginas
+    
+    Args:
+        pdf_path: Ruta del PDF multipágina
+        extractor: Instancia del extractor
+        excel_manager: Gestor de Excel
+        
+    Returns:
+        Tuple[int, int]: (archivos_procesados_exitosamente, archivos_con_error)
+    """
+    logger.info("="*60)
+    logger.info(f"🔄 PROCESANDO PDF MULTIPÁGINA: {os.path.basename(pdf_path)}")
+    logger.info("="*60)
+    
+    # Obtener información del archivo
+    pdf_path_obj = Path(pdf_path)
+    base_name = pdf_path_obj.stem
+    parent_dir = pdf_path_obj.parent
+    
+    # Crear directorio para las páginas separadas
+    split_directory = parent_dir / f"{base_name}_paginas_separadas"
+    
+    # Separar el PDF en páginas individuales
+    success, created_files = extractor.pdf_splitter.split_pdf_pages(pdf_path, str(split_directory))
+    
+    if not success or not created_files:
+        logger.error(f"❌ No se pudieron separar las páginas del PDF: {pdf_path}")
+        return 0, 1
+    
+    # Crear archivo Excel para este PDF multipágina
+    excel_path = excel_manager.create_excel_template(str(split_directory), f"reporte_{base_name}")
+    
+    logger.info(f"📊 Creado archivo Excel: {excel_path}")
+    
+    # Procesar cada página separada
+    successful_extractions = 0
+    failed_extractions = 0
+    
+    for page_file in created_files:
+        success, error_msg = process_single_file(
+            page_file, excel_manager, extractor, excel_path, base_name
+        )
+        
+        if success:
+            successful_extractions += 1
+        else:
+            failed_extractions += 1
+    
+    # Mostrar resumen del PDF multipágina
+    logger.info("="*60)
+    logger.info(f"📋 RESUMEN PDF MULTIPÁGINA '{base_name}':")
+    logger.info(f"   📄 Páginas separadas: {len(created_files)}")
+    logger.info(f"   ✅ Procesadas exitosamente: {successful_extractions}")
+    logger.info(f"   ❌ Con errores: {failed_extractions}")
+    logger.info(f"   📊 Excel generado: {excel_path.name}")
+    logger.info(f"   📂 Archivos en: {split_directory}")
+    logger.info("="*60)
+    
+    return successful_extractions, failed_extractions
+
+def process_certificates_directory():
+    """🆕 FUNCIÓN PRINCIPAL MEJORADA: Procesa todos los certificados incluyendo manejo de PDFs multipágina"""
+    
+    logger.info("=" * 80)
     logger.info(f"🚀 INICIANDO PROCESAMIENTO CON MODELO: {DEFAULT_MODEL.upper()}")
-    logger.info("=" * 60)
+    logger.info("=" * 80)
     logger.info("📋 CARACTERÍSTICAS IMPLEMENTADAS:")
     logger.info("   ✅ Primera fila: Fecha de procesamiento destacada")
     logger.info("   ✅ Primera columna: Nombre del archivo para trazabilidad")
-    logger.info("   • Estado de vigencia calculado desde fecha de procesamiento")
-    logger.info("=" * 60)
+    logger.info("   ✅ Estado de vigencia calculado desde fecha de procesamiento")
+    logger.info("   🆕 NUEVA: Separación automática de PDFs multipágina")
+    logger.info("   🆕 NUEVA: Procesamiento individual de cada página/certificado")
+    logger.info("   🆕 NUEVA: Reportes independientes para PDFs multipágina")
+    logger.info("=" * 80)
     
     # Configuración
     extractor = DocumentExtractorReport()
@@ -706,10 +891,11 @@ def process_certificates_directory():
     # Extensiones prohibidas
     extensiones_prohibidas = {ext.value for ext in ArchivoProhibido}
     
-    # Contadores para estadísticas
+    # Contadores para estadísticas GLOBALES
     total_processed = 0
     successful_extractions = 0
     failed_extractions = 0
+    multipage_pdfs_processed = 0
     
     # Procesar cada carpeta
     for raiz, dirs, archivos in os.walk(carpeta_certificates):
@@ -726,7 +912,7 @@ def process_certificates_directory():
             
         logger.info(f"📁 Procesando carpeta: {nombre_carpeta} ({len(archivos_permitidos)} archivos)")
         
-        # Crear archivo Excel para esta carpeta
+        # Crear archivo Excel para archivos de página única en esta carpeta
         excel_path = excel_manager.create_excel_template(raiz, f"reporte_{nombre_carpeta}")
         
         # Procesar cada archivo
@@ -734,41 +920,44 @@ def process_certificates_directory():
             path_file = os.path.join(raiz, archivo)
             total_processed += 1
             
-            try:
-                logger.info(f"📄 Procesando archivo: {archivo}")
+            # 🆕 NUEVA LÓGICA: Verificar si es PDF multipágina
+            if extractor.should_split_pdf(path_file):
+                logger.info(f"🔄 PDF multipágina detectado: {archivo}")
+                multipage_pdfs_processed += 1
                 
-                # Extraer información y transcripción
-                certificate_info, transcription = extractor.extract_content(path_file)
+                # Procesar PDF multipágina por separado
+                mp_success, mp_failed = process_multipage_pdf(path_file, extractor, excel_manager)
+                successful_extractions += mp_success
+                failed_extractions += mp_failed
                 
-                # NUEVA CARACTERÍSTICA: Insertar en Excel incluyendo nombre del archivo
-                excel_manager.insert_certificate_data(excel_path, certificate_info, transcription, archivo)
+            else:
+                # Procesar archivo normalmente (PDF de 1 página u otros formatos)
+                success, error_msg = process_single_file(
+                    path_file, excel_manager, extractor, excel_path, nombre_carpeta
+                )
                 
-                successful_extractions += 1
-                logger.info(f"✅ Éxito: {archivo}")
-                
-            except Exception as e:
-                failed_extractions += 1
-                logger.error(f"❌ Error procesando {archivo}: {str(e)}")
-                
-                # Insertar fila de error con nombre del archivo
-                error_data = {
-                    'certificate_name': '',
-                    'message_error': str(e)
-                }
-                try:
-                    excel_manager.insert_certificate_data(excel_path, error_data, f"Error al procesar: {str(e)}", archivo)
-                except Exception as excel_error:
-                    logger.error(f"Error insertando error en Excel: {excel_error}")
+                if success:
+                    successful_extractions += 1
+                else:
+                    failed_extractions += 1
     
-    # Mostrar estadísticas finales
-    logger.info("=" * 60)
-    logger.info("📊 RESUMEN DE PROCESAMIENTO:")
+    # Mostrar estadísticas finales MEJORADAS
+    logger.info("=" * 80)
+    logger.info("📊 RESUMEN FINAL DE PROCESAMIENTO:")
     logger.info(f"🤖 Modelo utilizado: {DEFAULT_MODEL.upper()}")
     logger.info(f"📝 Total de archivos procesados: {total_processed}")
+    logger.info(f"📄 PDFs multipágina detectados: {multipage_pdfs_processed}")
     logger.info(f"✅ Extracciones exitosas: {successful_extractions}")
     logger.info(f"❌ Extracciones fallidas: {failed_extractions}")
-    logger.info(f"📈 Tasa de éxito: {(successful_extractions/total_processed*100):.1f}%" if total_processed > 0 else "N/A")
-    logger.info("=" * 60)
+    if total_processed > 0:
+        logger.info(f"📈 Tasa de éxito: {(successful_extractions/total_processed*100):.1f}%")
+    else:
+        logger.info("📈 Tasa de éxito: N/A")
+    logger.info("=" * 80)
+    
+    if multipage_pdfs_processed > 0:
+        logger.info("🎯 NOTA: Los PDFs multipágina fueron separados automáticamente")
+        logger.info("   y procesados como certificados individuales en carpetas separadas.")
 
 if __name__ == "__main__":
     try:
