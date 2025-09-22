@@ -11,3 +11,5 @@ certificates-split
 __pycache__
 .env
 processing-certificates
+
+.DS_Store

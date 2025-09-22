@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    container_name: python_app_ubuntu
+    volumes:
+      - .:/app
+      - python_packages:/usr/local/lib/python3.11/site-packages
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    # Usar el comando que coincida con tu Dockerfile
+    command: python3.11 app.py  # o python app.py según la solución
+
+volumes:
+  python_packages:
